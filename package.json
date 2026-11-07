@@ -1,11 +1,16 @@
 {
-  "name": "oh-my-temp",
+  "name": "hanoi-temp",
   "version": "0.0.0",
   "private": true,
   "scripts": {
     "deploy": "uv run pywrangler deploy",
     "dev": "uv run pywrangler dev",
-    "start": "uv run pywrangler dev"
+    "start": "uv run pywrangler dev",
+    "db:migrate": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "seed": "python3 scripts/seed.py",
+    "types": "wrangler types",
+    "test": "python3 -m unittest discover -s tests -v"
   },
   "devDependencies": {
     "wrangler": "^4.158.0"

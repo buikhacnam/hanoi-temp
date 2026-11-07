@@ -66,3 +66,7 @@ jspm_packages/
 python_modules/
 .venv/
 .venv-workers/
+# Downloaded weather responses and generated seed SQL
+data/
+__pycache__/
+*.pyc
