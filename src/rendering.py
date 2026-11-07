@@ -4,11 +4,19 @@ from datetime import date, datetime
 from html import escape
 import math
 import re
+from urllib.parse import urlencode
 
 from page_template import PAGE
 from weather import HANOI_TZ
 
 METRICS = {'mean': 'Daily mean', 'high': 'Daily high', 'low': 'Daily low'}
+
+SORT_COLUMNS = {'year': 'Year', 'mean': 'Average', 'high': 'High', 'low': 'Low'}
+
+
+def normalize_sort(sort, order):
+    return (sort if sort in SORT_COLUMNS else 'year',
+            order if order in ('asc', 'desc') else 'desc')
 
 
 def fmt(value):
@@ -46,7 +54,8 @@ def chart_svg(history, current, baseline, year, metric, leap):
     return ''.join(out)
 
 
-def render_page(data, metric='mean', *, error=False):
+def render_page(data, metric='mean', *, sort='year', order='desc', error=False):
+    sort, order = normalize_sort(sort, order)
     metric = metric if metric in METRICS else 'mean'
     today = date.fromisoformat(data['date'])
     date_text = f'{today:%B} {today.day}'
@@ -93,17 +102,44 @@ def render_page(data, metric='mean', *, error=False):
         row = selector(history,key=lambda r:r[metric]) if history else None
         fragments[key] = f'{fmt(row[metric])}°C<small>in {year_of(row)}</small>' if row else '—'
     fragments['years'] = f'{len(history)}<small>{"since "+str(year_of(history[0])) if history else "history not imported"}</small>'
+    def page_link(selected_metric, selected_sort, selected_order, anchor=''):
+        params = {'metric': selected_metric}
+        if (selected_sort, selected_order) != ('year', 'desc'):
+            params.update(sort=selected_sort, order=selected_order)
+        return escape('/?' + urlencode(params) + anchor, quote=True)
+
+    fragments['reset_sort'] = f'<a class="reset-sort" href="{page_link(metric, "year", "desc", "#table-title")}" title="Restore newest year first">Reset sort</a>'
     links = []
     for key, label in [('mean', 'Daily mean'), ('high', 'High'), ('low', 'Low')]:
         selected = ' aria-current="page"' if key == metric else ''
-        links.append(f'<a href="/?metric={key}"{selected}>{label}</a>')
+        links.append(f'<a href="{page_link(key, sort, order)}"{selected}>{label}</a>')
     fragments['metric_links'] = ''.join(links)
 
+    headers = []
+    for key, label in SORT_COLUMNS.items():
+        active = key == sort
+        next_order = 'asc' if active and order == 'desc' else 'desc'
+        direction = 'ascending' if next_order == 'asc' else 'descending'
+        aria_sort = f' aria-sort="{"ascending" if order == "asc" else "descending"}"' if active else ''
+        arrow = ('↑' if order == 'asc' else '↓') if active else '↕'
+        unit = ' (°C)' if key != 'year' else ''
+        column_class = 'active-metric' if key == metric else ''
+        headers.append(f'<th scope="col" class="{column_class}"{aria_sort}><a href="{page_link(metric, key, next_order, "#table-title")}" aria-label="Sort by {label.lower()}, {direction}">{label}{unit} <span aria-hidden="true">{arrow}</span></a></th>')
+    fragments['table_headers'] = ''.join(headers)
+    values['sort_description'] = f'Sorted by {SORT_COLUMNS[sort].lower()}, ' + (('oldest first' if order == 'asc' else 'newest first') if sort == 'year' else ('lowest first' if order == 'asc' else 'highest first'))
+
+    rows = history + ([current] if current else [{'date': str(today)}])
+    # Sort only the table; chart points must retain chronological order.
+    value = year_of if sort == 'year' else lambda row: row.get(sort)
+    available = [row for row in rows if value(row) is not None]
+    missing = [row for row in rows if value(row) is None]
+    ordered = sorted(available, key=lambda row: (value(row), year_of(row)), reverse=order == 'desc') + missing
     table = []
-    for i,row in enumerate(([current] if current else [{'date':str(today)}])+list(reversed(history))):
+    for row in ordered:
+        is_today = row['date'] == str(today)
         cells = ''.join(f'<td class="{"active-metric" if k==metric else ""}">{fmt(row.get(k))}</td>' for k in METRICS)
-        status = ('Forecast' if current else 'Unavailable') if i==0 else 'ERA5 estimate'
-        table.append(f'<tr class="{"current-year" if i==0 else ""}"><th scope="row">{year_of(row)}{" · Today" if i==0 else ""}</th>{cells}<td><span class="row-status {"forecast" if i==0 else ""}">{status}</span></td></tr>')
+        status = ('Forecast' if current else 'Unavailable') if is_today else 'ERA5 estimate'
+        table.append(f'<tr class="{"current-year" if is_today else ""}"><th scope="row">{year_of(row)}{" · Today" if is_today else ""}</th>{cells}<td><span class="row-status {"forecast" if is_today else ""}">{status}</span></td></tr>')
     fragments['year_rows'] = ''.join(table)
     fragments['chart'] = chart_svg(history,current,baseline,today.year,metric,leap)
     slots = {**{k:escape(str(v)) for k,v in values.items()},**fragments}

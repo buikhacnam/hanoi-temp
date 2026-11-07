@@ -106,3 +106,12 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         _,_,start,end=ingest.await_args_list[1].args
         self.assertEqual((end-start).days,30)
         self.assertEqual(start,date(2025,12,18))
+
+    async def test_sort_query_is_normalized_before_cache_lookup(self):
+        app=entry.Default();app.env=SimpleNamespace(DB=object())
+        for query,sort,order in [('sort=low&order=asc','low','asc'),
+                                 ('sort=invalid&order=invalid','year','desc')]:
+            request=SimpleNamespace(url='https://weather.example/?'+query,method='GET')
+            with patch.object(entry,'cached_page',new=AsyncMock(return_value=object())) as lookup:
+                await app.fetch(request)
+            self.assertTrue(lookup.await_args.args[0].endswith(f'/mean/{sort}/{order}'))

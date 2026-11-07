@@ -29,3 +29,9 @@ class CacheWindowTests(unittest.TestCase):
         key=cache_window('https://weather.example/','mean',now)[0]
         self.assertEqual(key,cache_window('https://weather.example/index.html?tracking=abc','mean',now)[0])
         self.assertNotEqual(key,cache_window('https://weather.example/','high',now)[0])
+
+    def test_sort_variants_have_separate_cache_entries(self):
+        now=datetime(2026,11,7,6,tzinfo=timezone.utc)
+        keys={cache_window('https://weather.example/','mean',now,sort=sort,order=order)[0]
+              for sort in ('year','mean','high','low') for order in ('asc','desc')}
+        self.assertEqual(len(keys),8)

@@ -5,17 +5,17 @@ from urllib.parse import urlsplit
 from weather import HANOI_TZ
 
 # Bump this when changing rendered markup so deployments do not reuse old pages.
-CACHE_VERSION = 'v1'
+CACHE_VERSION = 'v3'
 INTERVAL_HOURS = 12
 
 
-def cache_window(url, metric, now=None):
+def cache_window(url, metric, now=None, *, sort='year', order='desc'):
     local = (now or datetime.now(timezone.utc)).astimezone(HANOI_TZ)
     start = local.replace(hour=(local.hour // INTERVAL_HOURS)*INTERVAL_HOURS,
                           minute=0, second=0, microsecond=0)
     end = start + timedelta(hours=INTERVAL_HOURS)
     origin = urlsplit(url)
-    key = f'{origin.scheme}://{origin.netloc}/__page_cache/{CACHE_VERSION}/{local.date()}/{start.hour:02d}/{metric}'
+    key = f'{origin.scheme}://{origin.netloc}/__page_cache/{CACHE_VERSION}/{local.date()}/{start.hour:02d}/{metric}/{sort}/{order}'
     return key, start, end
 
 

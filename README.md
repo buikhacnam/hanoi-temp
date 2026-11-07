@@ -70,7 +70,9 @@ An empty or incomplete import is shown explicitly; the app never invents values.
 - The Worker renders complete HTML and SVG directly from D1. CSS is inline in the page template; there is no public assets directory or
   static-assets binding. No browser JavaScript is shipped. Mean/high/low controls are ordinary links (`?metric=mean`, `high`, or
   `low`). The date is calculated in Hanoi on each request. HTML pages use a twelve-hour
-  Cloudflare Cache API cache, split by Hanoi date, midnight/noon window, and metric.
+  Cloudflare Cache API cache, split by Hanoi date, midnight/noon window, metric, sort column, and sort direction.
+  Table headings sort by year, average, high, or low; clicking again reverses
+  the order. Sorting uses server-rendered links and preserves the chart metric.
   Browser caching is disabled (`max-age=0`); edge expiry stops at the next window
   boundary. Cache hits skip D1 and HTML rendering. API responses, errors, missing
   forecasts, and forecasts from the preceding window are not cached. Cache

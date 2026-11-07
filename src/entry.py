@@ -4,7 +4,7 @@ from urllib.parse import parse_qs, urlsplit
 from js import AbortSignal
 from workers import Response, WorkerEntrypoint, fetch
 from weather import UPSERT, api_url, parse_daily, today_hanoi
-from rendering import render_page
+from rendering import render_page, normalize_sort
 from page_cache import cached_page, store_page, cache_window, cache_ttl, INTERVAL_HOURS
 
 
@@ -70,7 +70,9 @@ class Default(WorkerEntrypoint):
                                  headers={'Allow': 'GET, HEAD'})
         metric = parse_qs(url.query).get('metric', ['mean'])[0]
         metric = metric if metric in ('mean', 'high', 'low') else 'mean'
-        key, window_start, window_end = cache_window(request.url, metric)
+        params = parse_qs(url.query)
+        sort, order = normalize_sort(params.get('sort', ['year'])[0], params.get('order', ['desc'])[0])
+        key, window_start, window_end = cache_window(request.url, metric, sort=sort, order=order)
         if is_page and request.method == 'GET':
             cached = await cached_page(key)
             if cached is not None:
@@ -92,12 +94,12 @@ class Default(WorkerEntrypoint):
             if is_page:
                 # A request can arrive just before cron finishes at noon/midnight.
                 # Do not retain the preceding window's forecast for another 12 hours.
-                current_key, _, _ = cache_window(request.url, metric)
+                current_key, _, _ = cache_window(request.url, metric, sort=sort, order=order)
                 eligible = (request.method == 'GET' and current and not stale
                     and datetime.fromisoformat(current['updated_at']) >= window_start
                     and str(today) == str(window_start.date()) and current_key == key)
                 ttl = cache_ttl(window_end) if eligible else 0
-                response = html_response(render_page(data, metric), ttl=ttl,
+                response = html_response(render_page(data, metric, sort=sort, order=order), ttl=ttl,
                     cache_status='MISS' if ttl else 'BYPASS')
                 if ttl:
                     await store_page(key, response)
@@ -107,7 +109,7 @@ class Default(WorkerEntrypoint):
             traceback.print_exc()
             if is_page:
                 data = dict(date=str(today_hanoi()), history=[], today=None)
-                return html_response(render_page(data, error=True), status=503)
+                return html_response(render_page(data, metric, sort=sort, order=order, error=True), status=503)
             return Response.json({'error': 'Weather data is temporarily unavailable. Please try again.'},
                                  status=503, headers={'Cache-Control': 'no-store'})
 

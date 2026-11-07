@@ -58,3 +58,41 @@ class RenderingTests(unittest.TestCase):
         self.assertIn('Weather history is not available yet.',page)
         self.assertNotIn('nan',page.lower())
         self.assertNotIn('{{',page)
+
+    def test_all_columns_sort_both_directions_without_changing_chart(self):
+        import re
+        self.data['history'] = [
+            {**row(2000), 'mean': 26., 'high': 30., 'low': 15.},
+            {**row(2001), 'mean': 21., 'high': 23., 'low': 19.},
+        ]
+        original = list(self.data['history'])
+        default_chart = re.search(r'<svg id="chart".*?</svg>', render_page(self.data)).group()
+        ascending = {'year': [2000, 2001, 2026], 'mean': [2001, 2026, 2000],
+                     'high': [2001, 2026, 2000], 'low': [2000, 2001, 2026]}
+        for sort, expected in ascending.items():
+            for order in ('asc', 'desc'):
+                with self.subTest(sort=sort, order=order):
+                    page = render_page(self.data, sort=sort, order=order)
+                    body = page.split('<tbody id="year-rows">')[1].split('</tbody>')[0]
+                    years = [int(y) for y in re.findall(r'<th scope="row">(\d+)', body)]
+                    self.assertEqual(years, expected if order == 'asc' else expected[::-1])
+                    self.assertEqual(body.count('class="current-year"'), 1)
+                    self.assertIn('class="current-year"><th scope="row">2026 · Today', body)
+                    self.assertEqual(re.search(r'<svg id="chart".*?</svg>', page).group(), default_chart)
+        self.assertEqual(self.data['history'], original)
+
+    def test_sort_links_toggle_preserve_metric_and_handle_invalid_input(self):
+        page = render_page(self.data, 'low', sort='high', order='asc')
+        self.assertIn('href="/?metric=low&amp;sort=high&amp;order=desc#table-title"', page)
+        self.assertIn('href="/?metric=mean&amp;sort=high&amp;order=asc"', page)
+        self.assertIn('aria-sort="ascending"', page)
+        self.assertIn('Sorted by high, lowest first', page)
+        self.assertEqual(render_page(self.data, sort='<script>', order='wrong'), render_page(self.data))
+
+    def test_unavailable_forecast_is_last_for_temperature_sorting(self):
+        self.data['today'] = None
+        for order in ('asc', 'desc'):
+            page = render_page(self.data, sort='mean', order=order)
+            body = page.split('<tbody id="year-rows">')[1].split('</tbody>')[0]
+            self.assertIn('2026 · Today', body.split('<tr')[-1])
+            self.assertIn('Unavailable', body.split('<tr')[-1])
